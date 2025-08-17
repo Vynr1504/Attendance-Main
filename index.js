@@ -1,4 +1,3 @@
-
 import express from "express";
 import dotenv from "dotenv";
 import helmet from "helmet";
@@ -17,6 +16,8 @@ import cookieParser from "cookie-parser";
 import bodyParser from "body-parser";
 import path from 'path';
 import { fileURLToPath } from 'url';
+import cluster from "cluster";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 dotenv.config();
@@ -178,12 +179,21 @@ async function generateSectionFacultyMap() {
     console.error("Error:", error);
   }
 }
-cron.schedule("0 3 * * *", () => {
-  console.log("Running generateSectionFacultyMap at 3:00 AM...");
-  generateSectionFacultyMap();
-});
+// Cluster-aware cron job - only run on one instance
+if (cluster.isPrimary || process.env.INSTANCE_ID === '0') {
+  cron.schedule("0 3 * * *", () => {
+    console.log(`[Instance ${process.env.INSTANCE_ID || 'primary'}] Running generateSectionFacultyMap at 3:00 AM...`);
+    generateSectionFacultyMap();
+  });
+}
+
 app.listen(port, async () => {
-  console.log(`Server is running at ${port}`);
+  console.log(`[Instance ${process.env.INSTANCE_ID || 'unknown'}] Server is running at ${port}`);
   await connectToMongoDB();
   // generateSectionFacultyMap();
+  
+  // Signal PM2 that the app is ready
+  if (process.send) {
+    process.send('ready');
+  }
 });
